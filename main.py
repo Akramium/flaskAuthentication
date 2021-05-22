@@ -9,6 +9,8 @@ app.config['SECRET_KEY'] = 'any-secret-key-you-choose'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
 
 
 ##CREATE TABLE IN DB
@@ -38,7 +40,6 @@ def register():
         )
         name = request.form.get('name')
         email = request.form.get('email')
-        password = request.form.get('password')
         user = User(
             name=name,
             email=email,
@@ -46,27 +47,54 @@ def register():
         )
         db.session.add(user)
         db.session.commit()
+        login_user(user)
+        flash('Logged in successfully.')
+
         return render_template("secrets.html", name=user.name)
     return render_template("register.html")
 
 
-@app.route('/login')
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.query(User).get(user_id)
+
+
+@app.route('/login', methods=['POST', 'GET'])
 def login():
+    if request.method == 'POST':
+        email = request.form["email"]
+        password = request.form["password"]
+        user = db.session.query(User).filter_by(email=email).first()
+        if not user:
+            error = "Email does not exist!"
+            return render_template("login.html", error=error)
+        if check_password_hash(user.password, password):
+            login_user(user)
+            return redirect(url_for('secrets'))
+        else:
+            error = "Password Incorrect"
+            return render_template("login.html", error=error)
+
     return render_template("login.html")
 
 
 @app.route('/secrets')
+@login_required
 def secrets():
-    return render_template("secrets.html")
+    print(current_user.name)
+    return render_template("secrets.html", name=current_user.name)
 
 
 @app.route('/logout')
 def logout():
-    pass
+    logout_user()
+    return redirect(url_for('home'))
 
 
 @app.route('/download', methods=['GET'])
+@login_required
 def download():
+    print(current_user.name)
     return send_from_directory('static', filename="files/cheat_sheet.pdf")
 
 
